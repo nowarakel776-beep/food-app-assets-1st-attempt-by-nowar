@@ -1,20 +1,19 @@
 const express = require('express');
-const admin = require('firebase-admin');
+const { initializeApp } = require('firebase-admin/app'); // <-- Changed
+const { cert } = require('firebase-admin/app');         // <-- Changed
+const { getMessaging } = require('firebase-admin/messaging'); // Generated for modern FCM
 const cors = require('cors');
 
 const app = express();
 app.use(express.json());
 app.use(cors());
-let privateKey = process.env.FIREBASE_PRIVATE_KEY;
-if(privateKey){
-  privateKey = process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n');
-}
+
 // Initialize Firebase Admin using environment variables
-admin.initializeApp({
-  credential: admin.credential.cert({
+initializeApp({
+  credential: cert({
     projectId: process.env.FIREBASE_PROJECT_ID,
     clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-    privateKey: privateKey,
+    privateKey: process.env.FIREBASE_PRIVATE_KEY ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n') : undefined,
   }),
 });
 
@@ -35,16 +34,11 @@ app.post('/send-notification', async (req, res) => {
   };
 
   try {
-    const response = await admin.messaging().send(message);
+    // Updated to use modern messaging getter
+    const response = await getMessaging().send(message); 
     res.status(200).json({ success: true, messageId: response });
   } catch (error) {
     console.error('Error sending FCM message:', error);
     res.status(500).json({ error: error.message });
   }
 });
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
-
