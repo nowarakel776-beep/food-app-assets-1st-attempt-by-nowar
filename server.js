@@ -1,22 +1,17 @@
 const express = require('express');
-const { initializeApp, cert } = require('firebase-admin/app'); // Modern Sub-module imports
-const { getMessaging } = require('firebase-admin/messaging');
+const { initializeApp, cert } = require('firebase-admin/app'); // Modern Sub-modules
+const { getMessaging } = require('firebase-admin/messaging');  // Modern Sub-modules
 const cors = require('cors');
 
 const app = express();
 app.use(express.json());
 app.use(cors());
 
-// Ensure the environment variables exist before initializing
-if (!process.env.FIREBASE_PROJECT_ID || !process.env.FIREBASE_PRIVATE_KEY || !process.env.FIREBASE_CLIENT_EMAIL) {
-  console.error("❌ CRITICAL ERROR: Missing required Firebase Environment Variables!");
-}
-
+// Initialize Firebase Admin using environment variables
 initializeApp({
   credential: cert({
     projectId: process.env.FIREBASE_PROJECT_ID,
     clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-    // Safely parse escaping newline characters commonly breaking on Render hosts
     privateKey: process.env.FIREBASE_PRIVATE_KEY ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n') : undefined,
   }),
 });
@@ -38,15 +33,17 @@ app.post('/send-notification', async (req, res) => {
   };
 
   try {
-    // Modern syntax for triggering cloud messages
+    // Updated from admin.messaging().send() to modern syntax
     const response = await getMessaging().send(message);
     res.status(200).json({ success: true, messageId: response });
   } catch (error) {
     console.error('Error sending FCM message:', error);
     res.status(500).json({ error: error.message });
   }
-  const PORT = process.env.PORT || 10000; // Render injects process.env.PORT automatically
-app.listen(PORT, '0.0.0.0', () => {     // Explicitly binding to 0.0.0.0 is required on Render
-  console.log(`Server is running on port ${PORT}`);
 });
+
+// Render dynamically sets process.env.PORT. Fallback to 10000 which is Render's default.
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server is running on port ${PORT}`);
 });
