@@ -45,4 +45,8 @@ app.post('/send-notification', async (req, res) => {
     console.error('Error sending FCM message:', error);
     res.status(500).json({ error: error.message });
   }
+  const PORT = process.env.PORT || 10000; // Render injects process.env.PORT automatically
+app.listen(PORT, '0.0.0.0', () => {     // Explicitly binding to 0.0.0.0 is required on Render
+  console.log(`Server is running on port ${PORT}`);
+});
 });
