@@ -1,18 +1,22 @@
 const express = require('express');
-const { initializeApp } = require('firebase-admin/app'); // <-- Changed
-const { cert } = require('firebase-admin/app');         // <-- Changed
-const { getMessaging } = require('firebase-admin/messaging'); // Generated for modern FCM
+const { initializeApp, cert } = require('firebase-admin/app'); // Modern Sub-module imports
+const { getMessaging } = require('firebase-admin/messaging');
 const cors = require('cors');
 
 const app = express();
 app.use(express.json());
 app.use(cors());
 
-// Initialize Firebase Admin using environment variables
+// Ensure the environment variables exist before initializing
+if (!process.env.FIREBASE_PROJECT_ID || !process.env.FIREBASE_PRIVATE_KEY || !process.env.FIREBASE_CLIENT_EMAIL) {
+  console.error("❌ CRITICAL ERROR: Missing required Firebase Environment Variables!");
+}
+
 initializeApp({
   credential: cert({
     projectId: process.env.FIREBASE_PROJECT_ID,
     clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+    // Safely parse escaping newline characters commonly breaking on Render hosts
     privateKey: process.env.FIREBASE_PRIVATE_KEY ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n') : undefined,
   }),
 });
@@ -34,8 +38,8 @@ app.post('/send-notification', async (req, res) => {
   };
 
   try {
-    // Updated to use modern messaging getter
-    const response = await getMessaging().send(message); 
+    // Modern syntax for triggering cloud messages
+    const response = await getMessaging().send(message);
     res.status(200).json({ success: true, messageId: response });
   } catch (error) {
     console.error('Error sending FCM message:', error);
