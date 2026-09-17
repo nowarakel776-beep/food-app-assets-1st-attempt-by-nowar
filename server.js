@@ -1,5 +1,5 @@
 const express = require('express');
-const admin = require('firebase-admin').default || require('firebase-admin');
+const admin = require('firebase-admin');
 const cors = require('cors');
 
 const app = express();
