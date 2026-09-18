@@ -64,8 +64,8 @@ app.post('/send-order-notification', async (req, res) => {
     const message = {
       token: fcmToken,
       notification: {
-        title: 'New Order Received! 🍔',
-        body: `Order #${orderId || ''} was placed by ${customerName || 'a customer'}.`,
+        title: 'تم استلام طلب جديد! 🍔',
+        body: `الطلب رقم #${orderId || ''} تم وضعه من قبل  ${customerName || 'زبون'}.`,
       },
       data: {
         orderId: orderId || '',
@@ -101,8 +101,8 @@ app.post('/send-driver-notification', async (req, res) => {
     const message = {
       token: fcmToken,
       notification: {
-        title: 'New Delivery Assignment! 🚚',
-        body: `You have been assigned an order from ${restaurantName || 'a restaurant'}.`,
+        title: 'لديك مهمة جديد! 🚚',
+        body: `لديك طلب في  ${restaurantName || 'مطعم'}.`,
       },
       data: {
         orderId: orderId || '',
