@@ -90,7 +90,7 @@ app.post('/send-driver-notification', async (req, res) => {
     }
 
     // Fetch the driver's FCM token from Realtime Database
-    const snapshot = await getDatabase().ref(`deliveryUsers/${driverId}/fcmToken`).once('value');
+    const snapshot = await getDatabase().ref(`users/${driverId}/fcmToken`).once('value');
     const fcmToken = snapshot.val();
 
     if (!fcmToken) {
