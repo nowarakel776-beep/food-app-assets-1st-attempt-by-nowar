@@ -80,6 +80,43 @@ app.post('/send-order-notification', async (req, res) => {
   }
 });
 
+// Driver notification endpoint (looks up driver token automatically from Database)
+app.post('/send-driver-notification', async (req, res) => {
+  try {
+    const { driverId, orderId, restaurantName } = req.body;
+
+    if (!driverId) {
+      return res.status(400).json({ error: 'Missing driverId' });
+    }
+
+    // Fetch the driver's FCM token from Realtime Database
+    const snapshot = await getDatabase().ref(`deliveryUsers/${driverId}/fcmToken`).once('value');
+    const fcmToken = snapshot.val();
+
+    if (!fcmToken) {
+      return res.status(404).json({ error: 'Driver FCM token not found' });
+    }
+
+    const message = {
+      token: fcmToken,
+      notification: {
+        title: 'New Delivery Assignment! 🚚',
+        body: `You have been assigned an order from ${restaurantName || 'a restaurant'}.`,
+      },
+      data: {
+        orderId: orderId || '',
+        click_action: 'FLUTTER_NOTIFICATION_CLICK',
+      },
+    };
+
+    const response = await getMessaging().send(message);
+    res.status(200).json({ success: true, messageId: response });
+  } catch (error) {
+    console.error('Error sending driver notification:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Render dynamically sets process.env.PORT. Fallback to 10000 which is Render's default.
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, '0.0.0.0', () => {
