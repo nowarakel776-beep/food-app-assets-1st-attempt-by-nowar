@@ -101,7 +101,7 @@ app.post('/send-driver-notification', async (req, res) => {
     const message = {
       token: fcmToken,
       notification: {
-        title: 'لديك مهمة جديد! 🚚',
+        title: 'لديك مهمة جديدة! 🚚',
         body: `لديك طلب في  ${restaurantName || 'مطعم'}.`,
       },
       data: {
