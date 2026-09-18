@@ -1,6 +1,7 @@
 const express = require('express');
-const { initializeApp, cert } = require('firebase-admin/app'); // Modern Sub-modules
-const { getMessaging } = require('firebase-admin/messaging');  // Modern Sub-modules
+const { initializeApp, cert } = require('firebase-admin/app');
+const { getMessaging } = require('firebase-admin/messaging');
+const { getDatabase } = require('firebase-admin/database');
 const cors = require('cors');
 
 const app = express();
@@ -16,6 +17,7 @@ initializeApp({
   }),
 });
 
+// General notification endpoint (passes token explicitly)
 app.post('/send-notification', async (req, res) => {
   const { token, title, body, data } = req.body;
 
@@ -33,11 +35,47 @@ app.post('/send-notification', async (req, res) => {
   };
 
   try {
-    // Updated from admin.messaging().send() to modern syntax
     const response = await getMessaging().send(message);
     res.status(200).json({ success: true, messageId: response });
   } catch (error) {
     console.error('Error sending FCM message:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Order notification endpoint (looks up restaurant token automatically from Database)
+app.post('/send-order-notification', async (req, res) => {
+  try {
+    const { restaurantId, orderId, customerName } = req.body;
+
+    if (!restaurantId) {
+      return res.status(400).json({ error: 'Missing restaurantId' });
+    }
+
+    // Fetch the restaurant's FCM token from Realtime Database
+    const snapshot = await getDatabase().ref(`restaurants/${restaurantId}/fcmToken`).once('value');
+    const fcmToken = snapshot.val();
+
+    if (!fcmToken) {
+      return res.status(404).json({ error: 'Restaurant FCM token not found' });
+    }
+
+    const message = {
+      token: fcmToken,
+      notification: {
+        title: 'New Order Received! 🍔',
+        body: `Order #${orderId || ''} was placed by ${customerName || 'a customer'}.`,
+      },
+      data: {
+        orderId: orderId || '',
+        click_action: 'FLUTTER_NOTIFICATION_CLICK',
+      },
+    };
+
+    const response = await getMessaging().send(message);
+    res.status(200).json({ success: true, messageId: response });
+  } catch (error) {
+    console.error('Error sending order notification:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -47,3 +85,4 @@ const PORT = process.env.PORT || 10000;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server is running on port ${PORT}`);
 });
+
