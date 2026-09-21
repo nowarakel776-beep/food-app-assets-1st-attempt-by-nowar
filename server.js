@@ -153,6 +153,43 @@ app.post('/send-customer-notification', async (req, res) => {
   }
 });
 
+// Restaurant cancellation notification endpoint (notifies restaurant when customer cancels)
+app.post('/send-restaurant-cancellation-notification', async (req, res) => {
+  try {
+    const { restaurantId, orderId, customerName, reason } = req.body;
+
+    if (!restaurantId) {
+      return res.status(400).json({ error: 'Missing restaurantId' });
+    }
+
+    const snapshot = await getDatabase().ref(`restaurants/${restaurantId}/fcmToken`).once('value');
+    const fcmToken = snapshot.val();
+
+    if (!fcmToken) {
+      return res.status(404).json({ error: 'Restaurant FCM token not found' });
+    }
+
+    const message = {
+      token: fcmToken,
+      notification: {
+        title: 'تم إلغاء الطلب من قبل الزبون ❌',
+        body: `الزبون ${customerName || 'الزبون'} قام بإلغاء الطلب رقم #${orderId || ''}. السبب: ${reason || 'غير متوفر'}`,
+      },
+      data: {
+        orderId: orderId || '',
+        reason: reason || '',
+        click_action: 'FLUTTER_NOTIFICATION_CLICK',
+      },
+    };
+
+    const response = await getMessaging().send(message);
+    res.status(200).json({ success: true, messageId: response });
+  } catch (error) {
+    console.error('Error sending restaurant cancellation notification:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server is running on port ${PORT}`);
