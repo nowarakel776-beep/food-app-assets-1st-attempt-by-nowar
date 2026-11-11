@@ -11,6 +11,6 @@ jobs:
     steps:
       - name: Send HTTP GET to Render Backend
         run: |
-          curl --fail https://tikram-backend.onrender.com/
+          curl --fail --retry 3 --retry-delay 10 https://tikram-backend.onrender.com/
           echo "Ping Success"
 
