@@ -1,0 +1,16 @@
+name: Keep Backend Alive
+
+on:
+  schedule:
+    #Runn every 10 minutes
+    - cron '/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping-server:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send HTTP GET to Render Backend
+        run: |
+	  curl --fail https://tikram-backend.onrender.com/
+          echo "- Ping Success"
