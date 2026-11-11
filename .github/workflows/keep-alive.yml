@@ -2,8 +2,7 @@ name: Keep Backend Alive
 
 on:
   schedule:
-    #Runn every 10 minutes
-    - cron '/10 * * * *'
+    - cron: '*/10 * * * *'
   workflow_dispatch:
 
 jobs:
@@ -12,5 +11,6 @@ jobs:
     steps:
       - name: Send HTTP GET to Render Backend
         run: |
-	  curl --fail https://tikram-backend.onrender.com/
-          echo "- Ping Success"
+          curl --fail https://tikram-backend.onrender.com/
+          echo "Ping Success"
+
