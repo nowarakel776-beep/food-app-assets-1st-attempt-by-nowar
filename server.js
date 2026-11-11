@@ -3,7 +3,7 @@ const { initializeApp, cert } = require('firebase-admin/app');
 const { getMessaging } = require('firebase-admin/messaging');
 const { getDatabase } = require('firebase-admin/database');
 const { getAuth } = require('firebase-admin/auth');
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, DisconnectReason, initAuthCreds, BufferJSON, proto } = require('@whiskeysockets/baileys');
 const qrcode = require('qrcode-terminal');
 const { Boom } = require('@hapi/boom');
 const cors = require('cors');
@@ -26,6 +26,63 @@ let waSock;
 let isWhatsAppReady = false;
 
 // ==========================================
+// --- FIREBASE AUTH STATE ADAPTER FOR BAILEYS ---
+// ==========================================
+async function useFirebaseAuthState(dbPath = 'whatsapp_auth_session') {
+  const db = getDatabase();
+  const ref = db.ref(dbPath);
+
+  const snapshot = await ref.once('value');
+  const data = snapshot.val() || {};
+
+  let creds = data.creds ? JSON.parse(JSON.stringify(data.creds), BufferJSON.reviver) : initAuthCreds();
+
+  const saveCreds = async () => {
+    const serializedCreds = JSON.parse(JSON.stringify(creds, BufferJSON.replacer));
+    await ref.child('creds').set(serializedCreds);
+  };
+
+  return {
+    state: {
+      creds,
+      keys: {
+        get: async (type, ids) => {
+          const dataSnap = await ref.child('keys').child(type).once('value');
+          const allKeys = dataSnap.val() || {};
+          const obj = {};
+          for (const id of ids) {
+            let value = allKeys[id];
+            if (value) {
+              if (type === 'app-state-sync-key') {
+                value = proto.Message.AppStateSyncKeyData.fromObject(value);
+              }
+              obj[id] = JSON.parse(JSON.stringify(value), BufferJSON.reviver);
+            }
+          }
+          return obj;
+        },
+        set: async (data) => {
+          const tasks = [];
+          for (const category of Object.keys(data)) {
+            for (const id of Object.keys(data[category])) {
+              const value = data[category][id];
+              const path = ref.child('keys').child(category).child(id);
+              if (value) {
+                tasks.push(path.set(JSON.parse(JSON.stringify(value, BufferJSON.replacer))));
+              } else {
+                tasks.push(path.remove());
+              }
+            }
+          }
+          await Promise.all(tasks);
+        }
+      }
+    },
+    saveCreds
+  };
+}
+
+// ==========================================
 // --- KEEP-ALIVE ENDPOINT (For GitHub Actions) ---
 // ==========================================
 app.get('/', (req, res) => {
@@ -37,10 +94,10 @@ app.get('/', (req, res) => {
   });
 });
 
-// Initialize Baileys WhatsApp Connection
+// Initialize Baileys WhatsApp Connection with Firebase Persistence
 async function connectToWhatsApp() {
   isWhatsAppReady = false;
-  const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
+  const { state, saveCreds } = await useFirebaseAuthState('tikram_whatsapp_session');
 
   waSock = makeWASocket({
     printQRInTerminal: false,
@@ -64,7 +121,6 @@ async function connectToWhatsApp() {
       }
     } else if (connection === 'open') {
       console.log('✅ WhatsApp bot connected successfully!');
-      // Give the socket 3 seconds to stabilize and sync internal maps
       setTimeout(() => {
         isWhatsAppReady = true;
       }, 3000);
@@ -103,12 +159,10 @@ app.post('/api/auth/send-otp', async (req, res) => {
     const cleanNumber = cleanPhoneNumber(phoneNumber);
     const rtdb = getDatabase();
 
-    // Ensure WhatsApp socket is connected and fully ready
     if (!waSock || !isWhatsAppReady) {
       return res.status(503).json({ error: 'WhatsApp bot is still syncing. Please try again in 5 seconds.' });
     }
 
-    // Safe Check Blacklist in Realtime Database
     try {
       const blacklistSnap = await rtdb.ref(`blacklisted_phones/${cleanNumber}`).once('value');
       if (blacklistSnap.exists()) {
@@ -118,20 +172,16 @@ app.post('/api/auth/send-otp', async (req, res) => {
       console.log('Skipping blacklist check:', ruleErr.message);
     }
 
-    // Generate 6-digit OTP & 3-minute TTL expiration timestamp
     const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
     const expiresAt = Date.now() + 3 * 60 * 1000;
 
-    // Save OTP to Realtime Database (`phone_otps/cleanNumber`)
     await rtdb.ref(`phone_otps/${cleanNumber}`).set({
       code: otpCode,
       expiresAt: expiresAt,
     });
 
-    // Direct JID construction (bypasses timeout-prone onWhatsApp queries)
     const recipientJid = `${cleanNumber}@s.whatsapp.net`;
 
-    // Send via WhatsApp Business JID
     await waSock.sendMessage(recipientJid, { 
       text: `Your verification code is: *${otpCode}*\n\nValid for 3 minutes.` 
     });
@@ -153,7 +203,6 @@ app.post('/api/auth/verify-otp', async (req, res) => {
     const formattedPhone = `+${cleanNumber}`;
     const rtdb = getDatabase();
 
-    // Fetch OTP record from Realtime Database
     const otpRef = rtdb.ref(`phone_otps/${cleanNumber}`);
     const otpSnap = await otpRef.once('value');
 
@@ -166,10 +215,8 @@ app.post('/api/auth/verify-otp', async (req, res) => {
       return res.status(400).json({ error: 'Invalid or expired verification code' });
     }
 
-    // Delete used OTP so it cannot be reused
     await otpRef.remove();
 
-    // Check or Create Firebase Auth User
     let uid;
     try {
       const userRecord = await getAuth().getUserByPhoneNumber(formattedPhone);
@@ -185,7 +232,6 @@ app.post('/api/auth/verify-otp', async (req, res) => {
       uid = newUserRecord.uid;
     }
 
-    // Generate Firebase Custom Token
     const customToken = await getAuth().createCustomToken(uid);
 
     res.status(200).json({ success: true, customToken });
@@ -199,7 +245,6 @@ app.post('/api/auth/verify-otp', async (req, res) => {
 // --- EXISTING NOTIFICATION ENDPOINTS ---
 // ==========================================
 
-// General notification endpoint (passes token explicitly)
 app.post('/send-notification', async (req, res) => {
   const { token, title, body, data } = req.body;
 
@@ -225,7 +270,6 @@ app.post('/send-notification', async (req, res) => {
   }
 });
 
-// Order notification endpoint (looks up restaurant token automatically from Database)
 app.post('/send-order-notification', async (req, res) => {
   try {
     const { restaurantId, orderId, customerName } = req.body;
@@ -261,7 +305,6 @@ app.post('/send-order-notification', async (req, res) => {
   }
 });
 
-// Driver notification endpoint (looks up driver token automatically from Database)
 app.post('/send-driver-notification', async (req, res) => {
   try {
     const { driverId, orderId, restaurantName } = req.body;
@@ -297,7 +340,6 @@ app.post('/send-driver-notification', async (req, res) => {
   }
 });
 
-// Customer notification endpoint (looks up customer token automatically from Database for cancellations)
 app.post('/send-customer-notification', async (req, res) => {
   try {
     const { customerId, orderId, reason } = req.body;
@@ -334,7 +376,6 @@ app.post('/send-customer-notification', async (req, res) => {
   }
 });
 
-// Restaurant cancellation notification endpoint (notifies restaurant when customer cancels)
 app.post('/send-restaurant-cancellation-notification', async (req, res) => {
   try {
     const { restaurantId, orderId, customerName, reason } = req.body;
