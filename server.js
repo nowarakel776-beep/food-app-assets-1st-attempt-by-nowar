@@ -102,6 +102,8 @@ async function connectToWhatsApp() {
   waSock = makeWASocket({
     printQRInTerminal: false,
     auth: state,
+    markOnlineOnConnect: false,
+    browser: ['Tikram Server', 'FireFox', '1.0.0']
   });
 
   waSock.ev.on('connection.update', (update) => {
