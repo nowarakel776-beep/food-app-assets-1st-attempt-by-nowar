@@ -145,8 +145,14 @@ async function connectToWhatsApp() {
   });
 }
 
-// Helper to clean phone numbers
-const cleanPhoneNumber = (phone) => phone.replace(/[^0-9]/g, '');
+// Helper to clean and normalize phone numbers (supports 09xxxxxxxx and +963xxxxxxxxx)
+const cleanPhoneNumber = (phone) => {
+  const digits = String(phone ?? '').replace(/[^0-9]/g, '');
+  if (/^09\d{8}$/.test(digits)) {
+    return `963${digits.slice(1)}`;
+  }
+  return digits;
+};
 
 // ==========================================
 // --- WHATSAPP OTP & AUTHENTICATION ROUTES ---
